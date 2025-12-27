@@ -1,0 +1,283 @@
+--// Rayfield
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+   Name = "Sky Fighters | Script Rayfield", 
+   LoadingTitle = "Loading UI...",
+   LoadingSubtitle = "By MrRafa", 
+   ConfigurationSaving = { Enabled = false }
+})
+
+--// Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+
+--// Character Handler
+local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+LocalPlayer.CharacterAdded:Connect(function(char)
+    Character = char
+end)
+
+--// States
+local flyEnabled = false
+local flySpeed = 50
+local noclipEnabled = false
+local godModeEnabled = false
+local seeHB = false
+local hbSize = 1
+local selectedPlayerName = nil
+
+--// Tabs
+local TabMain = Window:CreateTab("Principal")
+local TabCombat = Window:CreateTab("Combate / Visual")
+local TabTools = Window:CreateTab("Ferramentas")
+
+---------------------------------------------------
+-- FLY
+---------------------------------------------------
+local flyBV, flyBG
+TabMain:CreateToggle({
+    Name = "FLY",
+    CurrentValue = false,
+    Callback = function(Value)
+        flyEnabled = Value
+        local hrp = Character:WaitForChild("HumanoidRootPart")
+
+        if flyEnabled then
+            flyBV = Instance.new("BodyVelocity")
+            flyBV.MaxForce = Vector3.new(1e9,1e9,1e9)
+            flyBV.Parent = hrp
+
+            flyBG = Instance.new("BodyGyro")
+            flyBG.MaxTorque = Vector3.new(1e9,1e9,1e9)
+            flyBG.Parent = hrp
+
+            task.spawn(function()
+                while flyEnabled do
+                    local cam = workspace.CurrentCamera
+                    local dir = Vector3.zero
+
+                    if UIS:IsKeyDown(Enum.KeyCode.W) then dir += cam.CFrame.LookVector end
+                    if UIS:IsKeyDown(Enum.KeyCode.S) then dir -= cam.CFrame.LookVector end
+                    if UIS:IsKeyDown(Enum.KeyCode.A) then dir -= cam.CFrame.RightVector end
+                    if UIS:IsKeyDown(Enum.KeyCode.D) then dir += cam.CFrame.RightVector end
+
+                    flyBV.Velocity = dir * flySpeed
+                    flyBG.CFrame = cam.CFrame
+                    RunService.RenderStepped:Wait()
+                end
+            end)
+        else
+            if flyBV then flyBV:Destroy() end
+            if flyBG then flyBG:Destroy() end
+        end
+    end
+})
+
+TabMain:CreateInput({
+    Name = "FLY Speed",
+    PlaceholderText = "Ex: 50",
+    Callback = function(txt)
+        flySpeed = tonumber(txt) or 50
+    end
+})
+
+---------------------------------------------------
+-- NOCLIP
+---------------------------------------------------
+local noclipConn
+TabMain:CreateToggle({
+    Name = "Noclip",
+    CurrentValue = false,
+    Callback = function(Value)
+        noclipEnabled = Value
+        if noclipConn then noclipConn:Disconnect() end
+
+        if noclipEnabled then
+            noclipConn = RunService.Stepped:Connect(function()
+                if Character then
+                    for _,v in pairs(Character:GetDescendants()) do
+                        if v:IsA("BasePart") then
+                            v.CanCollide = false
+                        end
+                    end
+                end
+            end)
+        end
+    end
+})
+
+---------------------------------------------------
+-- DOUBLE JUMP (APENAS 1 VEZ)
+---------------------------------------------------
+local doubleJumped = false
+TabMain:CreateButton({
+    Name = "Double Jump",
+    Callback = function()
+        if doubleJumped then return end
+        doubleJumped = true
+
+        local hum = Character:WaitForChild("Humanoid")
+        local canJump, used = false, false
+
+        UIS.JumpRequest:Connect(function()
+            if canJump and not used then
+                used = true
+                hum:ChangeState(Enum.HumanoidStateType.Jumping)
+            end
+        end)
+
+        hum.StateChanged:Connect(function(_, state)
+            if state == Enum.HumanoidStateType.Landed then
+                canJump, used = false, false
+            elseif state == Enum.HumanoidStateType.Freefall then
+                task.wait(0.2)
+                canJump = true
+            end
+        end)
+
+        Rayfield:Notify({Title="Sucesso",Content="Double Jump ativado"})
+    end
+})
+
+---------------------------------------------------
+-- ESP (HIGHLIGHT)
+---------------------------------------------------
+local espEnabled = false
+TabCombat:CreateToggle({
+    Name = "ESP (Highlight)",
+    CurrentValue = false,
+    Callback = function(Value)
+        espEnabled = Value
+        for _,p in pairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character then
+                local h = p.Character:FindFirstChild("ESP")
+                if Value and not h then
+                    h = Instance.new("Highlight")
+                    h.Name = "ESP"
+                    h.FillColor = Color3.fromRGB(255,0,0)
+                    h.Parent = p.Character
+                elseif not Value and h then
+                    h:Destroy()
+                end
+            end
+        end
+    end
+})
+
+---------------------------------------------------
+-- HITBOX
+---------------------------------------------------
+TabCombat:CreateToggle({
+    Name = "See Hitbox",
+    CurrentValue = false,
+    Callback = function(v)
+        seeHB = v
+    end
+})
+
+TabCombat:CreateSlider({
+    Name = "Hitbox Change",
+    Min = 1,
+    Max = 15,
+    CurrentValue = 1,
+    Callback = function(v)
+        hbSize = v
+        for _,p in pairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character then
+                local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    hrp.Size = Vector3.new(v,v,v)
+                    hrp.Transparency = seeHB and 0.5 or 1
+                    hrp.CanCollide = false
+                end
+            end
+        end
+    end
+})
+
+---------------------------------------------------
+-- GOD MODE
+---------------------------------------------------
+TabCombat:CreateToggle({
+    Name = "GodMode",
+    CurrentValue = false,
+    Callback = function(v)
+        godModeEnabled = v
+        task.spawn(function()
+            while godModeEnabled do
+                local hum = Character:FindFirstChild("Humanoid")
+                if hum then
+                    hum.Health = hum.MaxHealth
+                end
+                task.wait(0.1)
+            end
+        end)
+    end
+})
+
+---------------------------------------------------
+-- TOOLS
+---------------------------------------------------
+TabTools:CreateButton({
+    Name = "Dex Explorer",
+    Callback = function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/peyton2465/Dex/master/out.lua"))()
+    end
+})
+
+TabTools:CreateButton({
+    Name = "F3X",
+    Callback = function()
+        if not LocalPlayer.Backpack:FindFirstChild("Building Tools") then
+            Instance.new("HopperBin", LocalPlayer.Backpack).BinType = 4
+        end
+    end
+})
+
+TabTools:CreateButton({
+    Name = "TP Tool",
+    Callback = function()
+        if LocalPlayer.Backpack:FindFirstChild("Click TP") then return end
+        local t = Instance.new("Tool")
+        t.Name = "Click TP"
+        t.RequiresHandle = false
+        t.Activated:Connect(function()
+            Character:MoveTo(LocalPlayer:GetMouse().Hit.Position)
+        end)
+        t.Parent = LocalPlayer.Backpack
+    end
+})
+
+---------------------------------------------------
+-- TELEPORT PLAYER
+---------------------------------------------------
+local dropdown = TabTools:CreateDropdown({
+    Name = "Selecionar Jogador",
+    Options = {},
+    Callback = function(v)
+        selectedPlayerName = v
+    end
+})
+
+task.spawn(function()
+    while task.wait(3) do
+        local list = {}
+        for _,p in pairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer then table.insert(list,p.Name) end
+        end
+        dropdown:Refresh(list,true)
+    end
+end)
+
+TabTools:CreateButton({
+    Name = "TP para Cabeça",
+    Callback = function()
+        local t = Players:FindFirstChild(selectedPlayerName)
+        if t and t.Character and t.Character:FindFirstChild("Head") then
+            Character.HumanoidRootPart.CFrame = t.Character.Head.CFrame
+        end
+    end
+})
