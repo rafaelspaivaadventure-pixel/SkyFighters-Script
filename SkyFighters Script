@@ -1,61 +1,72 @@
---// Rayfield
-local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+--==================================================
+-- RAYFIELD
+--==================================================
+local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
 
 local Window = Rayfield:CreateWindow({
-   Name = "Sky Fighters | Script Rayfield", 
-   LoadingTitle = "Loading UI...",
-   LoadingSubtitle = "By MrRafa", 
-   ConfigurationSaving = { Enabled = false }
+    Name = "SkyFighters | Script",
+    LoadingTitle = "Loading...",
+    LoadingSubtitle = "By MrRafa",
+    ConfigurationSaving = {Enabled = false}
 })
 
---// Services
+--==================================================
+-- SERVICES / PLAYER
+--==================================================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
-local LocalPlayer = Players.LocalPlayer
 
---// Character Handler
-local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-LocalPlayer.CharacterAdded:Connect(function(char)
-    Character = char
-end)
+local LP = Players.LocalPlayer
+local Character = LP.Character or LP.CharacterAdded:Wait()
+local HRP, Humanoid
 
---// States
-local flyEnabled = false
+local function UpdateChar()
+    Character = LP.Character or LP.CharacterAdded:Wait()
+    HRP = Character:WaitForChild("HumanoidRootPart")
+    Humanoid = Character:WaitForChild("Humanoid")
+end
+UpdateChar()
+LP.CharacterAdded:Connect(UpdateChar)
+
+--==================================================
+-- STATES
+--==================================================
+local fly = false
 local flySpeed = 50
-local noclipEnabled = false
-local godModeEnabled = false
+local noclip = false
+local godmode = false
+local esp = false
 local seeHB = false
 local hbSize = 1
-local selectedPlayerName = nil
+local selectedPlayer = nil
+local savedSpawn = nil
 
---// Tabs
-local TabMain = Window:CreateTab("Principal")
+--==================================================
+-- TABS
+--==================================================
+local TabMain   = Window:CreateTab("Principal")
 local TabCombat = Window:CreateTab("Combate / Visual")
-local TabTools = Window:CreateTab("Ferramentas")
+local TabTools  = Window:CreateTab("Ferramentas")
 
----------------------------------------------------
+--==================================================
 -- FLY
----------------------------------------------------
-local flyBV, flyBG
+--==================================================
+local bv, bg
 TabMain:CreateToggle({
     Name = "FLY",
     CurrentValue = false,
-    Callback = function(Value)
-        flyEnabled = Value
-        local hrp = Character:WaitForChild("HumanoidRootPart")
+    Callback = function(v)
+        fly = v
+        if fly then
+            bv = Instance.new("BodyVelocity", HRP)
+            bv.MaxForce = Vector3.new(1e9,1e9,1e9)
 
-        if flyEnabled then
-            flyBV = Instance.new("BodyVelocity")
-            flyBV.MaxForce = Vector3.new(1e9,1e9,1e9)
-            flyBV.Parent = hrp
-
-            flyBG = Instance.new("BodyGyro")
-            flyBG.MaxTorque = Vector3.new(1e9,1e9,1e9)
-            flyBG.Parent = hrp
+            bg = Instance.new("BodyGyro", HRP)
+            bg.MaxTorque = Vector3.new(1e9,1e9,1e9)
 
             task.spawn(function()
-                while flyEnabled do
+                while fly and HRP do
                     local cam = workspace.CurrentCamera
                     local dir = Vector3.zero
 
@@ -63,15 +74,17 @@ TabMain:CreateToggle({
                     if UIS:IsKeyDown(Enum.KeyCode.S) then dir -= cam.CFrame.LookVector end
                     if UIS:IsKeyDown(Enum.KeyCode.A) then dir -= cam.CFrame.RightVector end
                     if UIS:IsKeyDown(Enum.KeyCode.D) then dir += cam.CFrame.RightVector end
+                    if UIS:IsKeyDown(Enum.KeyCode.Space) then dir += cam.CFrame.UpVector end
+                    if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then dir -= cam.CFrame.UpVector end
 
-                    flyBV.Velocity = dir * flySpeed
-                    flyBG.CFrame = cam.CFrame
+                    bv.Velocity = dir * flySpeed
+                    bg.CFrame = cam.CFrame
                     RunService.RenderStepped:Wait()
                 end
             end)
         else
-            if flyBV then flyBV:Destroy() end
-            if flyBG then flyBG:Destroy() end
+            if bv then bv:Destroy() end
+            if bg then bg:Destroy() end
         end
     end
 })
@@ -84,24 +97,21 @@ TabMain:CreateInput({
     end
 })
 
----------------------------------------------------
+--==================================================
 -- NOCLIP
----------------------------------------------------
+--==================================================
 local noclipConn
 TabMain:CreateToggle({
     Name = "Noclip",
     CurrentValue = false,
-    Callback = function(Value)
-        noclipEnabled = Value
+    Callback = function(v)
+        noclip = v
         if noclipConn then noclipConn:Disconnect() end
-
-        if noclipEnabled then
+        if noclip then
             noclipConn = RunService.Stepped:Connect(function()
-                if Character then
-                    for _,v in pairs(Character:GetDescendants()) do
-                        if v:IsA("BasePart") then
-                            v.CanCollide = false
-                        end
+                for _,p in pairs(Character:GetDescendants()) do
+                    if p:IsA("BasePart") then
+                        p.CanCollide = false
                     end
                 end
             end)
@@ -109,67 +119,70 @@ TabMain:CreateToggle({
     end
 })
 
----------------------------------------------------
--- DOUBLE JUMP (APENAS 1 VEZ)
----------------------------------------------------
-local doubleJumped = false
+--==================================================
+-- DOUBLE JUMP (1x)
+--==================================================
+local djEnabled = false
 TabMain:CreateButton({
     Name = "Double Jump",
     Callback = function()
-        if doubleJumped then return end
-        doubleJumped = true
+        if djEnabled then return end
+        djEnabled = true
 
-        local hum = Character:WaitForChild("Humanoid")
-        local canJump, used = false, false
+        local canJump = false
+        local used = false
 
         UIS.JumpRequest:Connect(function()
             if canJump and not used then
                 used = true
-                hum:ChangeState(Enum.HumanoidStateType.Jumping)
+                Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
             end
         end)
 
-        hum.StateChanged:Connect(function(_, state)
+        Humanoid.StateChanged:Connect(function(_, state)
             if state == Enum.HumanoidStateType.Landed then
-                canJump, used = false, false
+                canJump = false
+                used = false
             elseif state == Enum.HumanoidStateType.Freefall then
                 task.wait(0.2)
                 canJump = true
             end
         end)
 
-        Rayfield:Notify({Title="Sucesso",Content="Double Jump ativado"})
+        Rayfield:Notify({Title="OK", Content="Double Jump ativado"})
     end
 })
 
----------------------------------------------------
--- ESP (HIGHLIGHT)
----------------------------------------------------
-local espEnabled = false
+--==================================================
+-- ESP
+--==================================================
 TabCombat:CreateToggle({
     Name = "ESP (Highlight)",
     CurrentValue = false,
-    Callback = function(Value)
-        espEnabled = Value
-        for _,p in pairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer and p.Character then
-                local h = p.Character:FindFirstChild("ESP")
-                if Value and not h then
-                    h = Instance.new("Highlight")
-                    h.Name = "ESP"
-                    h.FillColor = Color3.fromRGB(255,0,0)
-                    h.Parent = p.Character
-                elseif not Value and h then
-                    h:Destroy()
+    Callback = function(v)
+        esp = v
+        for _,plr in pairs(Players:GetPlayers()) do
+            if plr ~= LP and plr.Character then
+                local h = plr.Character:FindFirstChild("ESP")
+                if v then
+                    if not h then
+                        h = Instance.new("Highlight")
+                        h.Name = "ESP"
+                        h.FillColor = Color3.fromRGB(255,0,0)
+                        h.OutlineColor = Color3.fromRGB(255,255,255)
+                        h.Parent = plr.Character
+                    end
+                else
+                    if h then h:Destroy() end
                 end
             end
         end
     end
 })
 
----------------------------------------------------
+--==================================================
 -- HITBOX
----------------------------------------------------
+--==================================================
 TabCombat:CreateToggle({
     Name = "See Hitbox",
     CurrentValue = false,
@@ -185,32 +198,31 @@ TabCombat:CreateSlider({
     CurrentValue = 1,
     Callback = function(v)
         hbSize = v
-        for _,p in pairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer and p.Character then
-                local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+        for _,plr in pairs(Players:GetPlayers()) do
+            if plr ~= LP and plr.Character then
+                local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
                 if hrp then
                     hrp.Size = Vector3.new(v,v,v)
-                    hrp.Transparency = seeHB and 0.5 or 1
                     hrp.CanCollide = false
+                    hrp.Transparency = seeHB and 0.5 or 1
                 end
             end
         end
     end
 })
 
----------------------------------------------------
+--==================================================
 -- GOD MODE
----------------------------------------------------
+--==================================================
 TabCombat:CreateToggle({
     Name = "GodMode",
     CurrentValue = false,
     Callback = function(v)
-        godModeEnabled = v
+        godmode = v
         task.spawn(function()
-            while godModeEnabled do
-                local hum = Character:FindFirstChild("Humanoid")
-                if hum then
-                    hum.Health = hum.MaxHealth
+            while godmode do
+                if Humanoid then
+                    Humanoid.Health = Humanoid.MaxHealth
                 end
                 task.wait(0.1)
             end
@@ -218,9 +230,41 @@ TabCombat:CreateToggle({
     end
 })
 
----------------------------------------------------
+--==================================================
 -- TOOLS
----------------------------------------------------
+--==================================================
+
+-- TP TOOL (FUNCIONA)
+TabTools:CreateButton({
+    Name = "TP Tool",
+    Callback = function()
+        if LP.Backpack:FindFirstChild("Click TP") then return end
+        local tool = Instance.new("Tool")
+        tool.Name = "Click TP"
+        tool.RequiresHandle = false
+        tool.Parent = LP.Backpack
+
+        tool.Activated:Connect(function()
+            local mouse = LP:GetMouse()
+            if mouse and mouse.Hit then
+                HRP.CFrame = CFrame.new(mouse.Hit.Position + Vector3.new(0,3,0))
+            end
+        end)
+    end
+})
+
+-- F3X (BTools Local)
+TabTools:CreateButton({
+    Name = "F3X",
+    Callback = function()
+        if LP.Backpack:FindFirstChild("Building Tools") then return end
+        local hb = Instance.new("HopperBin")
+        hb.BinType = Enum.BinType.Build
+        hb.Parent = LP.Backpack
+    end
+})
+
+-- DEX
 TabTools:CreateButton({
     Name = "Dex Explorer",
     Callback = function()
@@ -228,56 +272,55 @@ TabTools:CreateButton({
     end
 })
 
+--==================================================
+-- SPAWN
+--==================================================
 TabTools:CreateButton({
-    Name = "F3X",
+    Name = "Salvar Spawn",
     Callback = function()
-        if not LocalPlayer.Backpack:FindFirstChild("Building Tools") then
-            Instance.new("HopperBin", LocalPlayer.Backpack).BinType = 4
+        savedSpawn = HRP.CFrame
+        Rayfield:Notify({Title="Spawn", Content="Spawn salvo"})
+    end
+})
+
+TabTools:CreateButton({
+    Name = "Voltar para Spawn",
+    Callback = function()
+        if savedSpawn then
+            HRP.CFrame = savedSpawn
         end
     end
 })
 
-TabTools:CreateButton({
-    Name = "TP Tool",
-    Callback = function()
-        if LocalPlayer.Backpack:FindFirstChild("Click TP") then return end
-        local t = Instance.new("Tool")
-        t.Name = "Click TP"
-        t.RequiresHandle = false
-        t.Activated:Connect(function()
-            Character:MoveTo(LocalPlayer:GetMouse().Hit.Position)
-        end)
-        t.Parent = LocalPlayer.Backpack
-    end
-})
-
----------------------------------------------------
--- TELEPORT PLAYER
----------------------------------------------------
+--==================================================
+-- TP TO PLAYER
+--==================================================
 local dropdown = TabTools:CreateDropdown({
     Name = "Selecionar Jogador",
     Options = {},
     Callback = function(v)
-        selectedPlayerName = v
+        selectedPlayer = v
     end
 })
 
 task.spawn(function()
     while task.wait(3) do
         local list = {}
-        for _,p in pairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer then table.insert(list,p.Name) end
+        for _,plr in pairs(Players:GetPlayers()) do
+            if plr ~= LP then
+                table.insert(list, plr.Name)
+            end
         end
-        dropdown:Refresh(list,true)
+        dropdown:Refresh(list, true)
     end
 end)
 
 TabTools:CreateButton({
     Name = "TP para Cabeça",
     Callback = function()
-        local t = Players:FindFirstChild(selectedPlayerName)
-        if t and t.Character and t.Character:FindFirstChild("Head") then
-            Character.HumanoidRootPart.CFrame = t.Character.Head.CFrame
+        local target = Players:FindFirstChild(selectedPlayer)
+        if target and target.Character and target.Character:FindFirstChild("Head") then
+            HRP.CFrame = target.Character.Head.CFrame * CFrame.new(0,0,2)
         end
     end
 })
